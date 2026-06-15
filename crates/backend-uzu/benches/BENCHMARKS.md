@@ -37,6 +37,8 @@ The Cargo bench target is `main`. Its source lives at
 | `Metal/Kernel/RMSNorm`                  | `Metal/Kernel/RMSNorm`              |
 | `Metal/Kernel/Sampling/Argmax`          | `Metal/Kernel/Sampling/Argmax`      |
 | `ChatSession run`                       | `ChatSession run`                   |
+| `ChatSession structured/no_thinking`    | `ChatSession structured/no_thinking`|
+| `ChatSession structured/thinking`       | `ChatSession structured/thinking`   |
 | `Forward pass`                          | `Forward pass`                      |
 
 The prefix `Metal/Kernel/Matmul` runs both `GEMM` and `GEMM_MXU` in one pass.
@@ -112,3 +114,62 @@ To inspect a specific label only:
 open target/criterion/m2_max/report/index.html
 open target/criterion/a19/report/index.html
 ```
+
+## Structured Output benchmark runbook
+
+The structured benchmark matrix includes:
+
+- `plain_*` baselines
+- `plain_forced_sync_*` baselines (`generate_suffix_length > 1`) to isolate sync-loop overhead
+- `structured_calendar_event_*` (`JsonSchema`) scenarios
+- `structured_builtin_json_*` (`BuiltinJson`) scenarios
+
+Deterministic decode is enforced with greedy sampling and a fixed seed. For
+no-thinking runs, `tokens_limit` is `32,128,256,512` by default. Set
+`UZU_SO_LONG_LIMIT=1` to include `1024`.
+
+### No-thinking benchmark group
+
+```bash
+CRITERION_HOME="$PWD/target/criterion/local_so" cargo bench \
+  -p backend-uzu \
+  --bench main -- "ChatSession structured/no_thinking"
+```
+
+### Thinking benchmark group
+
+Requires a downloaded thinking-capable model:
+
+```bash
+THINKING_TEST_MODEL=/absolute/path/to/model \
+CRITERION_HOME="$PWD/target/criterion/local_so" cargo bench \
+  -p backend-uzu \
+  --bench main -- "ChatSession structured/thinking"
+```
+
+If `THINKING_TEST_MODEL` is not set, the thinking benchmark group is skipped
+with an explicit message.
+
+### Companion performance tests
+
+```bash
+cargo test -p backend-uzu --test performance_main -- --ignored structured_output
+
+THINKING_TEST_MODEL=/absolute/path/to/model \
+cargo test -p backend-uzu --test performance_main -- --ignored structured_output_thinking
+```
+
+These tests print:
+
+- median `total/prefill/generate` latencies per scenario
+- slowdown ratios:
+  - `structured/plain_async_candidate`
+  - `structured/plain_forced_sync`
+  - `builtin_json/plain_forced_sync`
+- cold-vs-warm compile proxy to estimate one-off grammar setup overhead
+
+Ratio interpretation:
+
+- `<= 5%`: noise / neutral
+- `5-10%`: noticeable, rerun for confirmation
+- `> 10%`: material improvement/regression

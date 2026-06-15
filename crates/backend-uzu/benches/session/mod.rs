@@ -1,1 +1,2 @@
 mod chat_session_bench;
+mod structured_output_session_bench;
